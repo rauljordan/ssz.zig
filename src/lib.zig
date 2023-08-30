@@ -19,12 +19,12 @@ pub extern "forward" fn return_data(data: *const u8, len: usize) void;
 
 pub fn args(len: usize) ![]u8 {
     var input = try std.heap.page_allocator.alloc(u8, len);
-    read_args(@ptrCast(*u8, input));
+    read_args(@ptrCast(input));
     return input;
 }
 
 pub fn output(data: []u8) void {
-    return_data(@ptrCast(*u8, data), data.len);
+    return_data(@ptrCast(data), data.len);
 }
 
 export fn arbitrum_main(len: usize) i32 {
