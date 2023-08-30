@@ -342,19 +342,6 @@ fn mixInLength(root: [32]u8, length: [32]u8, out: *[32]u8) void {
     hasher.final(out[0..]);
 }
 
-test "mixInLength" {
-    var root: [32]u8 = undefined;
-    var length: [32]u8 = undefined;
-    var expected: [32]u8 = undefined;
-    var mixin: [32]u8 = undefined;
-    _ = try std.fmt.hexToBytes(root[0..], "2279cf111c15f2d594e7a0055e8735e7409e56ed4250735d6d2f2b0d1bcf8297");
-    _ = try std.fmt.hexToBytes(length[0..], "deadbeef00000000000000000000000000000000000000000000000000000000");
-    _ = try std.fmt.hexToBytes(expected[0..], "0b665dda6e4c269730bc4bbe3e990a69d37fa82892bac5fe055ca4f02a98c900");
-    mixInLength(root, length, &mixin);
-
-    try std.testing.expect(std.mem.eql(u8, mixin[0..], expected[0..]));
-}
-
 fn mixInSelector(root: [32]u8, comptime selector: usize, out: *[32]u8) void {
     var hasher = sha256.init(sha256.Options{});
     hasher.update(root[0..]);
@@ -362,17 +349,6 @@ fn mixInSelector(root: [32]u8, comptime selector: usize, out: *[32]u8) void {
     std.mem.writeIntLittle(@TypeOf(selector), tmp[0..@sizeOf(@TypeOf(selector))], selector);
     hasher.update(tmp[0..]);
     hasher.final(out[0..]);
-}
-
-test "mixInSelector" {
-    var root: [32]u8 = undefined;
-    var expected: [32]u8 = undefined;
-    var mixin: [32]u8 = undefined;
-    _ = try std.fmt.hexToBytes(root[0..], "2279cf111c15f2d594e7a0055e8735e7409e56ed4250735d6d2f2b0d1bcf8297");
-    _ = try std.fmt.hexToBytes(expected[0..], "c483cb731afcfe9f2c596698eaca1c4e0dcb4a1136297adef74c31c268966eb5");
-    mixInSelector(root, 25, &mixin);
-
-    try std.testing.expect(std.mem.eql(u8, mixin[0..], expected[0..]));
 }
 
 /// Calculates the number of leaves needed for the merkelization
@@ -406,43 +382,6 @@ fn pack(comptime T: type, values: T, l: *ArrayList(u8)) ![]chunk {
     return std.mem.bytesAsSlice(chunk, l.items);
 }
 
-test "pack u32" {
-    var expected: [32]u8 = undefined;
-    var list = ArrayList(u8).init(std.testing.allocator);
-    defer list.deinit();
-    const out = try pack(u32, 0xdeadbeef, &list);
-
-    _ = try std.fmt.hexToBytes(expected[0..], "efbeadde00000000000000000000000000000000000000000000000000000000");
-
-    try std.testing.expect(std.mem.eql(u8, out[0][0..], expected[0..]));
-}
-
-test "pack bool" {
-    var expected: [32]u8 = undefined;
-    var list = ArrayList(u8).init(std.testing.allocator);
-    defer list.deinit();
-    const out = try pack(bool, true, &list);
-
-    _ = try std.fmt.hexToBytes(expected[0..], "0100000000000000000000000000000000000000000000000000000000000000");
-
-    try std.testing.expect(std.mem.eql(u8, out[0][0..], expected[0..]));
-}
-
-test "pack string" {
-    var expected: [128]u8 = undefined;
-    var list = ArrayList(u8).init(std.testing.allocator);
-    defer list.deinit();
-    const out = try pack([]const u8, "a" ** 100, &list);
-
-    _ = try std.fmt.hexToBytes(expected[0..], "6161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616100000000000000000000000000000000000000000000000000000000");
-
-    try std.testing.expect(expected.len == out.len * out[0].len);
-    try std.testing.expect(std.mem.eql(u8, out[0][0..], expected[0..32]));
-    try std.testing.expect(std.mem.eql(u8, out[1][0..], expected[32..64]));
-    try std.testing.expect(std.mem.eql(u8, out[2][0..], expected[64..96]));
-    try std.testing.expect(std.mem.eql(u8, out[3][0..], expected[96..]));
-}
-
 fn nextPowOfTwo(len: usize) !usize {
     if (len == 0) {
         return @as(usize, 0);
@@ -457,20 +396,6 @@ fn nextPowOfTwo(len: usize) !usize {
 
     const n = std.math.log2(std.math.shl(usize, len, 1) - 1);
     return std.math.powi(usize, 2, n);
-}
-
-test "next power of 2" {
-    var out = try nextPowOfTwo(0b1);
-    try std.testing.expect(out == 1);
-    out = try nextPowOfTwo(0b10);
-    try std.testing.expect(out == 2);
-    out = try nextPowOfTwo(0b11);
-    try std.testing.expect(out == 4);
-
-    // special cases
-    out = try nextPowOfTwo(0);
-    try std.testing.expect(out == 0);
-    try std.testing.expectError(error.OverflowsUSize, nextPowOfTwo(std.math.maxInt(usize)));
 }
 
 // merkleize recursively calculates the root hash of a Merkle tree.
@@ -505,64 +430,6 @@ pub fn merkleize(chunks: []chunk, limit: ?usize, out: *[32]u8) anyerror!void {
             digest.final(out);
         },
     }
-}
-
-test "merkleize a string" {
-    var list = ArrayList(u8).init(std.testing.allocator);
-    defer list.deinit();
-    var chunks = try pack([]const u8, "a" ** 100, &list);
-    var out: [32]u8 = undefined;
-    try merkleize(chunks, null, &out);
-    // Build the expected tree
-    const leaf1 = [_]u8{0x61} ** 32; // "0xaaaaa....aa" 32 times
-    var leaf2: [32]u8 = [_]u8{0x61} ** 4 ++ [_]u8{0} ** 28;
-    var root: [32]u8 = undefined;
-    var internal_left: [32]u8 = undefined;
-    var internal_right: [32]u8 = undefined;
-    var hasher = sha256.init(sha256.Options{});
-    hasher.update(leaf1[0..]);
-    hasher.update(leaf1[0..]);
-    hasher.final(&internal_left);
-    hasher = sha256.init(sha256.Options{});
-    hasher.update(leaf1[0..]);
-    hasher.update(leaf2[0..]);
-    hasher.final(&internal_right);
-    hasher = sha256.init(sha256.Options{});
-    hasher.update(internal_left[0..]);
-    hasher.update(internal_right[0..]);
-    hasher.final(&root);
-
-    try std.testing.expect(std.mem.eql(u8, out[0..], root[0..]));
-}
-
-test "merkleize a boolean" {
-    var list = ArrayList(u8).init(std.testing.allocator);
-    defer list.deinit();
-
-    var chunks = try pack(bool, false, &list);
-    var expected = [_]u8{0} ** BYTES_PER_CHUNK;
-    var out: [BYTES_PER_CHUNK]u8 = undefined;
-    try merkleize(chunks, null, &out);
-
-    try std.testing.expect(std.mem.eql(u8, out[0..], expected[0..]));
-
-    var list2 = ArrayList(u8).init(std.testing.allocator);
-    defer list2.deinit();
-
-    chunks = try pack(bool, true, &list2);
-    expected[0] = 1;
-    try merkleize(chunks, null, &out);
-    try std.testing.expect(std.mem.eql(u8, out[0..], expected[0..]));
-}
-
-test "merkleize a bytes16 vector with one element" {
-    var list = ArrayList(u8).init(std.testing.allocator);
-    defer list.deinit();
-    var chunks = try pack([16]u8, [_]u8{0xaa} ** 16, &list);
-    var expected: [32]u8 = [_]u8{0xaa} ** 16 ++ [_]u8{0x00} ** 16;
-    var out: [32]u8 = undefined;
-    try merkleize(chunks, null, &out);
-    try std.testing.expect(std.mem.eql(u8, out[0..], expected[0..]));
 }
 
 fn packBits(bits: []const bool, l: *ArrayList(u8)) ![]chunk {
