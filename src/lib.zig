@@ -14,6 +14,25 @@ const BYTES_PER_CHUNK = 32;
 /// Number of bytes per serialized length offset.
 const BYTES_PER_LENGTH_OFFSET = 4;
 
+pub extern "forward" fn read_args(dest: *u8) void;
+pub extern "forward" fn return_data(data: *const u8, len: usize) void;
+
+pub fn args(len: usize) ![]u8 {
+    var input = try std.heap.page_allocator.alloc(u8, len);
+    read_args(@ptrCast(*u8, input));
+    return input;
+}
+
+pub fn output(data: []u8) void {
+    return_data(@ptrCast(*u8, data), data.len);
+}
+
+export fn arbitrum_main(len: usize) i32 {
+    var input = args(len) catch return 1;
+    output(input);
+    return 0; // OK.
+}
+
 // Determine the serialized size of an object so that
 // the code serializing of variable-size objects can
 // determine the offset to the next object.
